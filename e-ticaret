@@ -1,0 +1,109 @@
+package main
+
+import (
+	"fmt"
+	"time"
+)
+
+// 1. VERİ MODELLERİ (STRUCTS)
+
+type Product struct {
+	ID    int
+	Name  string
+	Price float64
+}
+
+type Order struct {
+	ID       int
+	Customer string
+	Items    []Product
+	Status   string
+}
+
+// 2. ARAYÜZ (INTERFACE) & ÖDEME YÖNTEMİ
+
+type PaymentProcessor interface {
+	ProcessPayment(amount float64) bool
+}
+
+type CreditCard struct {
+	CardNumber string
+	Holder     string
+}
+
+// CreditCard struct'ı PaymentProcessor interface'ini uyguluyor
+func (cc CreditCard) ProcessPayment(amount float64) bool {
+	fmt.Printf("%.2f TL ödeme %s kartından başarıyla tahsil edildi.\n", amount, cc.CardNumber)
+	return true
+}
+
+// 3. RECEIVER METHODS (METODLAR)
+
+// Value Receiver: Siparişteki ürünlerin toplam tutarını hesaplar
+func (o Order) CalculateTotal() float64 {
+	total := 0.0
+	for _, item := range o.Items {
+		total += item.Price
+	}
+	return total
+}
+
+// Pointer Receiver (*): Sipariş durumunu doğrudan günceller
+func (o *Order) UpdateStatus(newStatus string) {
+	o.Status = newStatus
+	fmt.Printf("Sipariş #%d Durumu Güncellendi: [%s]\n", o.ID, o.Status)
+}
+
+// 4. ASENKRON BİLDİRİM FONKSİYONU (GOROUTINE & CHANNEL)
+
+func sendNotification(customer string, ch chan string) {
+	time.Sleep(1 * time.Second) // Ağ gecikmesi simülasyonu
+	ch <- fmt.Sprintf("Müşteri '%s' kişisine e-posta bildirimi gönderildi.", customer)
+}
+
+// 5. ANA PROGRAM AKIŞI
+
+func main() {
+	fmt.Println("=== E-TİCARET SİPARİŞ İŞLEME SİSTEMİ BAŞLATILDI ===")
+
+	// A. Ürünleri Oluşturma
+	laptop := Product{ID: 101, Name: "Laptop", Price: 999.99}
+	headphones := Product{ID: 102, Name: "Headphones", Price: 199.99}
+
+	// B. Sipariş Oluşturma
+	myOrder := Order{
+		ID:       1001,
+		Customer: "Kaan",
+		Items:    []Product{laptop, headphones},
+		Status:   "Hazırlanıyor",
+	}
+
+	fmt.Printf("Sipariş Alan Müşteri: %s | Başlangıç Durumu: %s\n", myOrder.Customer, myOrder.Status)
+
+	// C. Toplam Tutarları Hesaplama
+	totalAmount := myOrder.CalculateTotal()
+	fmt.Printf("Hesaplanan Toplam Tutar: %.2f TL\n", totalAmount)
+
+	fmt.Println("\n--- Ödeme İşlemi ---")
+	// D. Ödeme Alma (Interface Kullanımı)
+	paymentMethod := CreditCard{CardNumber: "4543-XXXX-XXXX-1234", Holder: myOrder.Customer}
+	
+	if paymentMethod.ProcessPayment(totalAmount) {
+		// Ödeme başarılıysa durumu güncelle (Pointer Receiver)
+		myOrder.UpdateStatus("Ödendi / Hazırlanıyor")
+	}
+
+	fmt.Println("\n--- Asenkron Bildirim Süreci ---")
+	// E. Bildirimi Arka Planda Gönderme (Goroutine & Channel)
+	notificationChannel := make(chan string)
+
+	go sendNotification(myOrder.Customer, notificationChannel)
+
+	fmt.Println("Sipariş işlemi tamamlandı, bildirim bekleniyor...")
+
+	// Kanaldan mesajın gelmesini bekleme
+	notificationMessage := <-notificationChannel
+	fmt.Println("Sistem Bildirimi:", notificationMessage)
+
+	fmt.Println("\n=== İŞLEM BAŞARIYLA TAMAMLANDI ===")
+}
